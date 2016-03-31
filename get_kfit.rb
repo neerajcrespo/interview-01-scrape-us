@@ -3,7 +3,7 @@ require 'pry'
 require 'net/http'
 require 'nokogiri'
 require 'cgi'
-
+FILENAME = "kfit_partners.csv"
 def get_page(id)
 	partner = "https://access.kfit.com/partners/#{id}"
 	if response = fetch(partner)
@@ -123,7 +123,7 @@ end
 
 def write_to_csv(data)
 	puts "Write results to csv..."
-	CSV.open("file.csv", "ab") do |csv|
+	CSV.open(FILENAME, "ab") do |csv|
 	  data.each do |row|
 	  	csv<<row
 	  end
@@ -153,7 +153,7 @@ end
 puts "Start..."
 # create new file
 header = ["id","name","address","city","lat","lng","rating","contact"]
-CSV.open("file.csv", "w",write_headers: true) do |csv|
+CSV.open(FILENAME, "w",write_headers: true) do |csv|
 	csv<<header
 end
 # get_data(529,530)
