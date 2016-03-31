@@ -2,9 +2,7 @@ require 'csv'
 require 'pry'
 require 'net/http'
 require 'nokogiri'
-require 'benchmark'
-uri = 'https://access.kfit.com/schedules/614474'
-partner = 'https://access.kfit.com/partners/517'
+require 'cgi'
 
 def get_page(id)
 	partner = "https://access.kfit.com/partners/#{id}"
@@ -30,11 +28,10 @@ def get_script_node(page)
 end
 
 def get_out_details(details_str)
-	name,address,city = ""
-	lat,lng = nil
+	name,address,city,lat,lng = ""
 	removed_var_name = details_str[(details_str.index('{')+1)..(details_str.rindex('};')-1)].strip
 	rows = removed_var_name.split(",\n").map(&:strip)
-	rows.map!{|r| /(.+):(.+)/.match(r).to_a.map(&:strip)}
+	rows.map!{|r| /(.+?):(.+)/.match(r).to_a.map(&:strip)}
 	rows.each do |r|
 		case r[1]
 		when "name" then
@@ -48,19 +45,24 @@ def get_out_details(details_str)
 		else
 		end
 	end
+	lat = "" if lat.nil?
+	lng = "" if lat.nil?
 	return name,address,city,lat,lng
 end
 
 def get_name(str)
-	str.gsub(/\A'|'\Z/, '')
+	name = str.gsub(/\A'|'\Z/, '')
+	CGI.unescapeHTML(name)
 end
 
 def get_address(str)
-	str.gsub(/\A'|'\Z/, '')
+	address = str.gsub(/\A'|'\Z/, '')
+	CGI.unescapeHTML(address)
 end
 
 def get_city(str)
 	city = str.gsub(/\A'|'\Z/, '')
+	city = CGI.unescapeHTML(city)
 	city = city.gsub(/\W/,' ').split.map(&:capitalize).join(' ')
 end
 
@@ -99,7 +101,7 @@ def get_contact(link)
 	contact_sibling_node = schedule_page.xpath("//span[contains(text(),'Contact')]").first
 	if contact_sibling_node
 		contact = contact_sibling_node.next.text
-		contact.gsub(/[[:space:]\-]/,'')
+		contact.gsub(/[\-\;]/,'')
 	else
 		""
 	end
@@ -120,8 +122,7 @@ end
 
 
 def write_to_csv(data)
-	
-	# puts "Write results to csv..."
+	puts "Write results to csv..."
 	CSV.open("file.csv", "ab") do |csv|
 	  data.each do |row|
 	  	csv<<row
@@ -132,37 +133,36 @@ end
 def get_data(starting,ending)
 	partner_details = []
 	id = starting
-	begin
-		while id <= ending do
+	while id<=ending do
+		begin
 			page = get_page(id)
 			if page
-				# puts "found #{id}! start to grab partner #{id} information..."
+				puts "found #{id}! start to grab partner #{id} information..."
 				details = get_partner_details(page).unshift(id)
 				partner_details<<details
 			end
-			id += 1
+		rescue=>e
+			puts e.message
+			puts e.backtrace.join("\n")
+			puts "opps...error on id #{id}...."
 		end
-		write_to_csv(partner_details)
-	rescue => e
-		puts e.message
-		puts e.backtrace.join("\n")
-		puts "opps...error on id #{id}....save whatever to csv"
-		write_to_csv(partner_details)
+		id += 1
 	end
+	write_to_csv(partner_details)
 end
-
+puts "Start..."
 # create new file
 header = ["id","name","address","city","lat","lng","rating","contact"]
 CSV.open("file.csv", "w",write_headers: true) do |csv|
 	csv<<header
 end
-Benchmark.bm do  |x|
-	x.report("multi:") do 
-		thr1 = Thread.new{ get_data(161,165)}
-		thr2 = Thread.new{ get_data(166,170)}
-		thr1.join
-		thr2.join
-	end
-	x.report("single:") {get_data(161,170)}
+# get_data(529,530)
+threads = (0..9).map do |i|
+	start = i==0 ? 1 : i*100
+	ending = start + 99
+	Thread.new{get_data(start,ending)}
 end
+
+threads.each {|t| t.join}
+
 
