@@ -1,14 +1,18 @@
+require 'csv'
 require 'pry'
 require 'net/http'
 require 'nokogiri'
 uri = 'https://access.kfit.com/schedules/614474'
 partner = 'https://access.kfit.com/partners/517'
 
-def get_script_node
-	puts "searching script nodes..."
-	partner = 'https://access.kfit.com/partners/517'
-	response = fetch(partner)
-	page = Nokogiri::HTML(response.body)
+def get_page(id)
+	partner = "https://access.kfit.com/partners/#{id}"
+	if response = fetch(partner)
+		return Nokogiri::HTML(response.body)
+	end
+end
+
+def get_script_node(page)
 	node = page.xpath('//script[contains(text(),"var outlet_details")]')
 	if node.empty?
 		warn("cannot find var outlet_details in script nodes")
@@ -57,8 +61,14 @@ def get_latlng(str)
 	str.scan(pattern).map(&:to_f)
 end
 
-def get_partner_details
-	name,address,city,lat,lng = get_out_details(get_script_node)
+def get_avg_rating(page)
+	rating = page.xpath("//div[@class='rating-average']/p/text()").first.text.to_f
+end
+
+def get_partner_details(page)
+	name,address,city,lat,lng = get_out_details(get_script_node(page))
+	avg_rating = get_avg_rating(page)
+	return name,address,city,lat,lng,avg_rating
 end
 
 def fetch(uri_string)
@@ -73,7 +83,22 @@ def fetch(uri_string)
 		nil
 	end
 end
-get_partner_details
+
+partner_details = []
+62.upto(65) do |id|
+	page = get_page(id)
+	if page
+		puts "found #{id}! start to grab partner information..."
+		details = get_partner_details(page).unshift(id)
+		partner_details<<details
+	end
+end
+header = ["id","name","address","city","lat","lng","rating"]
+CSV.open("file.csv", "wb",write_headers: true, headers: header) do |csv|
+  partner_details.each do |row|
+  	csv<<row
+  end
+end
 # if response = fetch(uri)
 # 	page = Nokogiri::HTML(response.body)
 # 	binding.pry
