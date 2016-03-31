@@ -156,7 +156,6 @@ header = ["id","name","address","city","lat","lng","rating","contact"]
 CSV.open(FILENAME, "w",write_headers: true) do |csv|
 	csv<<header
 end
-# get_data(529,530)
 threads = (0..9).map do |i|
 	start = i==0 ? 1 : i*100
 	ending = start + 99
