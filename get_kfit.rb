@@ -2,6 +2,7 @@ require 'csv'
 require 'pry'
 require 'net/http'
 require 'nokogiri'
+require 'benchmark'
 uri = 'https://access.kfit.com/schedules/614474'
 partner = 'https://access.kfit.com/partners/517'
 
@@ -119,30 +120,49 @@ end
 
 
 def write_to_csv(data)
-	header = ["id","name","address","city","lat","lng","rating","contact"]
-	puts "Write results to csv..."
-	CSV.open("file.csv", "wb",write_headers: true, headers: header) do |csv|
+	
+	# puts "Write results to csv..."
+	CSV.open("file.csv", "ab") do |csv|
 	  data.each do |row|
 	  	csv<<row
 	  end
 	end
 end
-partner_details = []
-id = 167
-begin
-	while id < 200 do
-		page = get_page(id)
-		if page
-			puts "found #{id}! start to grab partner #{id} information..."
-			details = get_partner_details(page).unshift(id)
-			partner_details<<details
+
+def get_data(starting,ending)
+	partner_details = []
+	id = starting
+	begin
+		while id <= ending do
+			page = get_page(id)
+			if page
+				# puts "found #{id}! start to grab partner #{id} information..."
+				details = get_partner_details(page).unshift(id)
+				partner_details<<details
+			end
+			id += 1
 		end
-		id += 1
+		write_to_csv(partner_details)
+	rescue => e
+		puts e.message
+		puts e.backtrace.join("\n")
+		puts "opps...error on id #{id}....save whatever to csv"
+		write_to_csv(partner_details)
 	end
-	write_to_csv(partner_details)
-rescue => e
-	puts e.message
-	puts e.backtrace.join("\n")
-	puts "opps...error on id #{id}....save whatever to csv"
-	write_to_csv(partner_details)
 end
+
+# create new file
+header = ["id","name","address","city","lat","lng","rating","contact"]
+CSV.open("file.csv", "w",write_headers: true) do |csv|
+	csv<<header
+end
+Benchmark.bm do  |x|
+	x.report("multi:") do 
+		thr1 = Thread.new{ get_data(161,165)}
+		thr2 = Thread.new{ get_data(166,170)}
+		thr1.join
+		thr2.join
+	end
+	x.report("single:") {get_data(161,170)}
+end
+
