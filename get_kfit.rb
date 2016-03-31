@@ -12,6 +12,13 @@ def get_page(id)
 	end
 end
 
+def get_schedule_page(str)
+	schedule_link = "https://access.kfit.com#{str}"
+	if response = fetch(schedule_link)
+		return Nokogiri::HTML(response.body)
+	end
+end
+
 def get_script_node(page)
 	node = page.xpath('//script[contains(text(),"var outlet_details")]')
 	if node.empty?
@@ -62,13 +69,39 @@ def get_latlng(str)
 end
 
 def get_avg_rating(page)
-	rating = page.xpath("//div[@class='rating-average']/p/text()").first.text.to_f
+	rating = page.xpath("//div[@class='rating-average']/p/text()")
+	unless rating.empty?
+		rating.first.text.to_f
+	else
+		""
+	end
 end
 
 def get_partner_details(page)
+	contact = ""
 	name,address,city,lat,lng = get_out_details(get_script_node(page))
 	avg_rating = get_avg_rating(page)
-	return name,address,city,lat,lng,avg_rating
+	schedule_links = get_schedule_links(page)
+	unless schedule_links.empty?
+		contact = get_contact(schedule_links.first)
+	end
+	return name,address,city,lat,lng,avg_rating,contact
+end
+
+def get_schedule_links(page)
+	links = page.css('a')
+	links.map {|link| link.attribute('href').to_s}.uniq.grep(/\/schedules\/\d+/)
+end
+
+def get_contact(link)
+	schedule_page = get_schedule_page(link)
+	contact_sibling_node = schedule_page.xpath("//span[contains(text(),'Contact')]").first
+	if contact_sibling_node
+		contact = contact_sibling_node.next.text
+		contact.gsub(/[[:space:]\-]/,'')
+	else
+		""
+	end
 end
 
 def fetch(uri_string)
@@ -84,22 +117,32 @@ def fetch(uri_string)
 	end
 end
 
-partner_details = []
-62.upto(65) do |id|
-	page = get_page(id)
-	if page
-		puts "found #{id}! start to grab partner information..."
-		details = get_partner_details(page).unshift(id)
-		partner_details<<details
+
+def write_to_csv(data)
+	header = ["id","name","address","city","lat","lng","rating","contact"]
+	puts "Write results to csv..."
+	CSV.open("file.csv", "wb",write_headers: true, headers: header) do |csv|
+	  data.each do |row|
+	  	csv<<row
+	  end
 	end
 end
-header = ["id","name","address","city","lat","lng","rating"]
-CSV.open("file.csv", "wb",write_headers: true, headers: header) do |csv|
-  partner_details.each do |row|
-  	csv<<row
-  end
+partner_details = []
+id = 167
+begin
+	while id < 200 do
+		page = get_page(id)
+		if page
+			puts "found #{id}! start to grab partner #{id} information..."
+			details = get_partner_details(page).unshift(id)
+			partner_details<<details
+		end
+		id += 1
+	end
+	write_to_csv(partner_details)
+rescue => e
+	puts e.message
+	puts e.backtrace.join("\n")
+	puts "opps...error on id #{id}....save whatever to csv"
+	write_to_csv(partner_details)
 end
-# if response = fetch(uri)
-# 	page = Nokogiri::HTML(response.body)
-# 	binding.pry
-# end
